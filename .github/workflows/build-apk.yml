@@ -50,7 +50,7 @@ jobs:
       # 6. 执行打包
       - name: Build APK
         run: |
-          buildozer android debug 2>&1 | tail -100
+          buildozer android debug
         env:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
