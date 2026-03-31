@@ -47,7 +47,13 @@ jobs:
           restore-keys: |
             buildozer-
 
-      # 6. 执行打包
+      # 6. 接受 Android SDK 许可证
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      # 7. 执行打包
       - name: Build APK
         run: |
           buildozer android debug
@@ -55,7 +61,7 @@ jobs:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
 
-      # 7. 上传 APK 为 Artifact（30天内可下载）
+      # 8. 上传 APK 为 Artifact（30天内可下载）
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +69,7 @@ jobs:
           path: bin/*.apk
           retention-days: 30
 
-      # 8. 如果是 tag 发布，自动创建 Release
+      # 9. 如果是 tag 发布，自动创建 Release
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
