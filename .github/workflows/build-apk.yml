@@ -34,28 +34,25 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
-      - name: Cache Buildozer global dir
-        uses: actions/cache@v4
-        with:
-          path: ~/.buildozer
-          key: buildozer-v2-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-v2-
-
-      - name: Pre-download SDK and accept licenses
-        run: |
-          # 先运行 buildozer 初始化（只下载，不打包）
-          buildozer android debug || true
-          # 接受所有许可证
-          if [ -f ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager ]; then
-            yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-          fi
-          # 清理，准备正式打包
-          rm -rf bin/ .buildozer/android/app/
+      # 暂时禁用缓存，确保许可证被正确接受
+      # - name: Cache Buildozer global dir
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: ~/.buildozer
+      #     key: buildozer-v2-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK
         run: |
-          buildozer android debug
+          # 使用 expect 自动回答 yes 接受许可证
+          sudo apt-get install -y expect
+          expect -c '
+            spawn buildozer android debug
+            expect {
+              "Accept? (y/N):" { send "y\r"; exp_continue }
+              "Accept? (y/n):" { send "y\r"; exp_continue }
+              eof
+            }
+          '
         env:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
