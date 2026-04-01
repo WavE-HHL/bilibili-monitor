@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:   # 允许手动在网页上点击触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -11,17 +11,14 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      # 1. 拉取代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Python 环境
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. 安装系统依赖（Buildozer 需要）
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
@@ -32,28 +29,30 @@ jobs:
             libffi-dev libssl-dev libtinfo5 \
             build-essential ccache
 
-      # 4. 安装 Buildozer 和 Cython
       - name: Install Buildozer
         run: |
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
-      # 5. 缓存 Buildozer 的 SDK/NDK（避免每次重复下载）
       - name: Cache Buildozer global dir
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-v2-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-
+            buildozer-v2-
 
-      # 6. 接受 Android SDK 许可证
-      - name: Accept Android SDK licenses
+      - name: Pre-download SDK and accept licenses
         run: |
-          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
-          yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          # 先运行 buildozer 初始化（只下载，不打包）
+          buildozer android debug || true
+          # 接受所有许可证
+          if [ -f ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager ]; then
+            yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+          fi
+          # 清理，准备正式打包
+          rm -rf bin/ .buildozer/android/app/
 
-      # 7. 执行打包
       - name: Build APK
         run: |
           buildozer android debug
@@ -61,17 +60,9 @@ jobs:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
 
-      # 8. 上传 APK 为 Artifact（30天内可下载）
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: bilibili-monitor-debug
           path: bin/*.apk
           retention-days: 30
-
-      # 9. 如果是 tag 发布，自动创建 Release
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: bin/*.apk
