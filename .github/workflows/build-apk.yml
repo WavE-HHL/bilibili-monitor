@@ -36,19 +36,36 @@ jobs:
 
       - name: Build APK
         run: |
-          # 先运行一次 buildozer 让它下载 SDK，然后接受许可证
-          buildozer android debug 2>&1 | tee build.log || true
+          # 先运行 buildozer 让它下载 SDK
+          buildozer android debug 2>&1 | tee build.log || BUILD_FAILED=$?
           
-          # 检查是否需要接受许可证
-          if grep -q "license is not accepted" build.log; then
-            echo "Accepting SDK licenses..."
-            # 找到 sdkmanager 并接受许可证
-            SDKMANAGER=$(find ~/.buildozer -name sdkmanager -type f 2>/dev/null | head -1)
+          # 如果失败是因为许可证问题
+          if grep -q "license is not accepted" build.log 2>/dev/null; then
+            echo "=== Accepting SDK licenses ==="
+            
+            # 等待 sdkmanager 下载完成
+            for i in {1..30}; do
+              SDKMANAGER=$(find ~/.buildozer -name sdkmanager -type f 2>/dev/null | head -1)
+              if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+                echo "Found sdkmanager: $SDKMANAGER"
+                break
+              fi
+              echo "Waiting for sdkmanager... ($i)"
+              sleep 10
+            done
+            
+            # 接受许可证
             if [ -n "$SDKMANAGER" ]; then
-              yes | $SDKMANAGER --licenses
+              $SDKMANAGER --licenses < /dev/null || true
+              # 或者使用 yes 但处理 broken pipe
+              (while true; do echo "y"; done) | $SDKMANAGER --licenses 2>/dev/null || true
             fi
+            
             # 重新打包
+            echo "=== Retrying build ==="
             buildozer android debug
+          elif [ -n "$BUILD_FAILED" ]; then
+            exit $BUILD_FAILED
           fi
         env:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
