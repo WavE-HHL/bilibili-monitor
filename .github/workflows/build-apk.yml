@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
@@ -34,25 +34,22 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
-      # 暂时禁用缓存，确保许可证被正确接受
-      # - name: Cache Buildozer global dir
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ~/.buildozer
-      #     key: buildozer-v2-${{ hashFiles('buildozer.spec') }}
-
       - name: Build APK
         run: |
-          # 使用 expect 自动回答 yes 接受许可证
-          sudo apt-get install -y expect
-          expect -c '
-            spawn buildozer android debug
-            expect {
-              "Accept? (y/N):" { send "y\r"; exp_continue }
-              "Accept? (y/n):" { send "y\r"; exp_continue }
-              eof
-            }
-          '
+          # 先运行一次 buildozer 让它下载 SDK，然后接受许可证
+          buildozer android debug 2>&1 | tee build.log || true
+          
+          # 检查是否需要接受许可证
+          if grep -q "license is not accepted" build.log; then
+            echo "Accepting SDK licenses..."
+            # 找到 sdkmanager 并接受许可证
+            SDKMANAGER=$(find ~/.buildozer -name sdkmanager -type f 2>/dev/null | head -1)
+            if [ -n "$SDKMANAGER" ]; then
+              yes | $SDKMANAGER --licenses
+            fi
+            # 重新打包
+            buildozer android debug
+          fi
         env:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
