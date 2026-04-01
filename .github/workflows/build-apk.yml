@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -34,39 +34,36 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
-      - name: Build APK
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            !~/.buildozer/android/platform/android-sdk/build-tools
+          key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
+
+      - name: Build APK with retries
         run: |
-          # 先运行 buildozer 让它下载 SDK
-          buildozer android debug 2>&1 | tee build.log || BUILD_FAILED=$?
+          # 第一次尝试（可能会因许可证失败，但 SDK 会下载好）
+          buildozer android debug || true
           
-          # 如果失败是因为许可证问题
-          if grep -q "license is not accepted" build.log 2>/dev/null; then
-            echo "=== Accepting SDK licenses ==="
-            
-            # 等待 sdkmanager 下载完成
-            for i in {1..30}; do
-              SDKMANAGER=$(find ~/.buildozer -name sdkmanager -type f 2>/dev/null | head -1)
-              if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
-                echo "Found sdkmanager: $SDKMANAGER"
-                break
-              fi
-              echo "Waiting for sdkmanager... ($i)"
-              sleep 10
-            done
-            
-            # 接受许可证
-            if [ -n "$SDKMANAGER" ]; then
-              $SDKMANAGER --licenses < /dev/null || true
-              # 或者使用 yes 但处理 broken pipe
-              (while true; do echo "y"; done) | $SDKMANAGER --licenses 2>/dev/null || true
-            fi
-            
-            # 重新打包
-            echo "=== Retrying build ==="
-            buildozer android debug
-          elif [ -n "$BUILD_FAILED" ]; then
-            exit $BUILD_FAILED
+          # 检查 APK 是否生成
+          if ls bin/*.apk 1> /dev/null 2>&1; then
+            echo "APK built successfully!"
+            exit 0
           fi
+          
+          # 接受许可证后重试
+          echo "Retrying after accepting licenses..."
+          SDK_DIR=$(find ~/.buildozer -type d -name "android-sdk" 2>/dev/null | head -1)
+          if [ -n "$SDK_DIR" ]; then
+            mkdir -p $SDK_DIR/licenses
+            echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $SDK_DIR/licenses/android-sdk-license
+            echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" >> $SDK_DIR/licenses/android-sdk-license
+            echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" >> $SDK_DIR/licenses/android-sdk-license
+          fi
+          
+          buildozer android debug
         env:
           ANDROIDSDK: ~/.buildozer/android/platform/android-sdk
           ANDROIDNDK: ~/.buildozer/android/platform/android-ndk-r25b
