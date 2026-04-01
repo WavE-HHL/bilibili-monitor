@@ -74,3 +74,4 @@ jobs:
           name: bilibili-monitor-debug
           path: bin/*.apk
           retention-days: 30
+
